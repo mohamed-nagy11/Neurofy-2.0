@@ -23,6 +23,8 @@ CODE_DIR = "/tmp/neurofy_code"
 PREPROCESS_KERNEL = f"{KAGGLE_USER}/neurofy-preprocess"
 RESULTS = "--tracking-dir /tmp/mlflow --archive /kaggle/working/mlflow_results.tar.gz"
 EXPERIMENT = f"python {{code}}/scripts/run_experiment.py {RESULTS}"
+COMPARE = f"python {{code}}/scripts/compare_models.py {RESULTS}"
+EXPLAIN = f"python {{code}}/scripts/explain.py {RESULTS}"
 SMOKE_PATIENTS = "chb04 chb02 chb16 chb17 chb19 chb22"
 
 _BOOTSTRAP = """\
@@ -92,8 +94,10 @@ KERNELS = {
                 _benchmark(2),
                 _benchmark(4),
                 _benchmark(1),
-                f"{EXPERIMENT} --config fp1f7_t8p8 --experiment neurofy-smoke-dual "
-                "--patients chb17 --max-epochs 3",
+                f"{EXPERIMENT} --config fp1f7_t8p8 --experiment neurofy-smoke-w1 "
+                f"--patients {SMOKE_PATIENTS} --max-epochs 3 --workers-per-gpu 2",
+                f"{COMPARE} --experiment neurofy-smoke-w1",
+                f"{EXPLAIN} --config fp1f7_t8p8 --experiment neurofy-smoke-w1",
             ]
         ),
         packages=("mlflow",),
@@ -111,10 +115,18 @@ KERNELS = {
     "train-fp1f7-t8p8": KernelSpec(
         slug="neurofy-train-fp1f7-t8p8",
         title="Neurofy Train Fp1f7 T8p8",
-        command=f"{EXPERIMENT} --config fp1f7_t8p8",
+        command=f"{EXPERIMENT} --config fp1f7_t8p8 && {COMPARE}",
         packages=("mlflow",),
         gpu=True,
         kernel_sources=(PREPROCESS_KERNEL, f"{KAGGLE_USER}/neurofy-train-fp1f7"),
+    ),
+    "explain": KernelSpec(
+        slug="neurofy-explain",
+        title="Neurofy Explain",
+        command=f"{EXPLAIN} --config fp1f7 && {EXPLAIN} --config fp1f7_t8p8",
+        packages=("mlflow",),
+        gpu=True,
+        kernel_sources=(PREPROCESS_KERNEL, f"{KAGGLE_USER}/neurofy-train-fp1f7-t8p8"),
     ),
 }
 

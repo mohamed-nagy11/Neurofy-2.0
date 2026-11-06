@@ -127,3 +127,78 @@ def plot_patient_metrics(rows: list[dict], metrics: tuple[str, ...]) -> Figure:
     ax.grid(axis="y", alpha=0.3)
     ax.legend(fontsize=8)
     return figure
+
+
+def plot_window_heatmap(
+    spectrogram: np.ndarray,
+    cam: np.ndarray,
+    frequencies: np.ndarray,
+    title: str,
+) -> Figure:
+    """Plot a window's spectrogram next to its Grad-CAM map."""
+    figure = Figure(figsize=(10, 4), layout="constrained")
+    axes = figure.subplots(1, 2, sharey=True)
+    extent = (0, 10, frequencies[0], frequencies[-1])
+
+    for ax, values, name, colormap in (
+        (axes[0], spectrogram, "Log magnitude", "viridis"),
+        (axes[1], cam, "Grad-CAM", "magma"),
+    ):
+        image = ax.imshow(values.T, origin="lower", aspect="auto", extent=extent, cmap=colormap)
+        ax.set(title=name, xlabel="Seconds")
+        figure.colorbar(image, ax=ax)
+    axes[0].set_ylabel("Frequency (Hz)")
+    figure.suptitle(title)
+    return figure
+
+
+def plot_band_importance(rows: list[dict]) -> Figure:
+    """Plot mean Grad-CAM importance per band for preictal and interictal windows."""
+    bands = [key for key in rows[0] if key not in ("patient", "seizure", "class")]
+    figure = Figure(figsize=(7, 4), layout="constrained")
+    ax = figure.subplots()
+    positions = np.arange(len(bands))
+
+    for index, label in enumerate(CLASS_NAMES):
+        values = [np.mean([row[band] for row in rows if row["class"] == label]) for band in bands]
+        ax.bar(positions + index * 0.4, values, 0.4, label=label)
+    ax.set_xticks(positions + 0.2, bands)
+    ax.set(ylabel="Mean Grad-CAM")
+    ax.grid(axis="y", alpha=0.3)
+    ax.legend()
+    return figure
+
+
+def plot_band_importance_by_time(rows: list[dict]) -> Figure:
+    """Plot mean preictal Grad-CAM importance per band against time before onset."""
+    reserved = ("patient", "seizure", "minutes_before_onset")
+    bands = [key for key in rows[0] if key not in reserved]
+    times = sorted({row["minutes_before_onset"] for row in rows}, reverse=True)
+    figure = Figure(figsize=(8, 4), layout="constrained")
+    ax = figure.subplots()
+
+    for band in bands:
+        values = [
+            np.mean([row[band] for row in rows if row["minutes_before_onset"] == time])
+            for time in times
+        ]
+        ax.plot([-time for time in times], values, marker="o", label=band)
+    ax.set(xlabel="Minutes relative to seizure onset", ylabel="Mean Grad-CAM")
+    ax.grid(alpha=0.3)
+    ax.legend()
+    return figure
+
+
+def plot_deletion_test(rows: list[dict]) -> Figure:
+    """Plot the logit drop from masking Grad-CAM regions against random regions."""
+    fractions = sorted({row["fraction"] for row in rows})
+    figure = Figure(figsize=(6, 4), layout="constrained")
+    ax = figure.subplots()
+
+    for key, label in (("cam_logit_drop", "Grad-CAM regions"), ("random_logit_drop", "random")):
+        values = [np.mean([row[key] for row in rows if row["fraction"] == f]) for f in fractions]
+        ax.plot(fractions, values, marker="o", label=label)
+    ax.set(xlabel="Fraction of cells masked", ylabel="Mean logit drop")
+    ax.grid(alpha=0.3)
+    ax.legend()
+    return figure

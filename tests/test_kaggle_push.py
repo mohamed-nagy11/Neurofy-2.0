@@ -1,9 +1,6 @@
-import base64
 import importlib.util
-import io
 import json
 import sys
-import tarfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -11,16 +8,6 @@ _spec = importlib.util.spec_from_file_location("kaggle_push", REPO_ROOT / "scrip
 kaggle_push = importlib.util.module_from_spec(_spec)
 sys.modules["kaggle_push"] = kaggle_push
 _spec.loader.exec_module(kaggle_push)
-
-
-def _archive(files: dict[str, bytes]) -> bytes:
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
-        for name, content in files.items():
-            info = tarfile.TarInfo(name)
-            info.size = len(content)
-            archive.addfile(info, io.BytesIO(content))
-    return buffer.getvalue()
 
 
 def _source(notebook: dict) -> str:
@@ -35,45 +22,92 @@ def test_load_env_ignores_comments_and_strips_quotes(tmp_path: Path) -> None:
     assert kaggle_push.load_env(tmp_path / "missing") == {}
 
 
-def test_notebook_embeds_archive_commit_and_command() -> None:
+def test_notebooks_stay_short_and_readable() -> None:
+    for spec in kaggle_push.KERNELS.values():
+        notebook = kaggle_push.build_notebook(spec, "a" * 40)
+        lines = _source(notebook).splitlines()
+
+        assert notebook["cells"][0]["cell_type"] == "markdown"
+        assert max(len(line) for line in lines) < 120
+        assert len(lines) < 100
+
+
+def test_notebook_checks_commit_and_runs_each_command_in_its_own_cell() -> None:
+    spec = kaggle_push.KERNELS["train-fp1f7-t8p8"]
+
+    notebook = kaggle_push.build_notebook(spec, "abc123", "--workers-per-gpu 2")
+    sources = ["".join(cell["source"]) for cell in notebook["cells"]]
+    source = "".join(sources)
+
+    assert 'assert commit == "abc123"' in source
+    assert "pip install -q mlflow" in source
+    assert sum("run_experiment.py" in cell for cell in sources) == 1
+    assert sum("compare_models.py" in cell for cell in sources) == 1
+    assert "--workers-per-gpu 2" in next(cell for cell in sources if "run_experiment" in cell)
+    assert "--workers-per-gpu" not in next(cell for cell in sources if "compare_models" in cell)
+
+
+def test_command_cells_stop_on_failure() -> None:
     spec = kaggle_push.KERNELS["verify"]
-    archive = _archive({"scripts/verify_dataset.py": b"content"})
 
-    notebook = kaggle_push.build_notebook(archive, "abc123", spec, "python {code}/run.py")
-    source = _source(notebook)
+    notebook = kaggle_push.build_notebook(spec, "abc")
+    commands = [cell for cell in notebook["cells"] if "%%bash\n" in cell["source"]]
 
-    assert base64.b64encode(archive).decode() in source
-    assert "abc123" in source
-    assert f"python {kaggle_push.CODE_DIR}/run.py" in source
+    assert commands
+    assert all(cell["source"][1] == "set -e\n" for cell in commands)
 
 
-def test_notebook_bootstrap_compiles() -> None:
-    spec = kaggle_push.KERNELS["verify"]
-    notebook = kaggle_push.build_notebook(_archive({"x": b"y"}), "abc", spec, "python x")
+def test_setup_cell_compiles_and_notebook_serializes() -> None:
+    notebook = kaggle_push.build_notebook(kaggle_push.KERNELS["verify"], "abc")
 
-    for cell in notebook["cells"]:
-        compile("".join(cell["source"]), "cell", "exec")
+    compile("".join(notebook["cells"][1]["source"]), "setup", "exec")
     json.dumps(notebook)
 
 
-def test_metadata_is_private_and_selects_t4_for_gpu_kernels() -> None:
+def test_metadata_is_private_attaches_code_and_selects_t4() -> None:
     cpu = kaggle_push.build_metadata(kaggle_push.KERNELS["verify"], "x.ipynb")
-    gpu_spec = kaggle_push.KernelSpec(slug="s", title="T", command="c", gpu=True)
-    gpu = kaggle_push.build_metadata(gpu_spec, "x.ipynb")
+    gpu = kaggle_push.build_metadata(kaggle_push.KERNELS["train-fp1f7"], "x.ipynb")
 
     assert cpu["is_private"] == "true"
     assert cpu["enable_gpu"] == "false"
     assert "machine_shape" not in cpu
+    assert kaggle_push.CODE_DATASET in cpu["dataset_sources"]
     assert gpu["is_private"] == "true"
     assert gpu["machine_shape"] == "NvidiaTeslaT4"
-    assert gpu["enable_gpu"] == "true"
+    assert kaggle_push.PREPROCESSED_DATASET in gpu["dataset_sources"]
 
 
-def test_tracked_files_exclude_secrets_and_plans() -> None:
-    tracked = kaggle_push.git("ls-files").decode().splitlines()
+def test_code_dataset_does_not_overwrite_existing_dataset() -> None:
+    assert kaggle_push.CODE_DATASET_SLUG != "neurofy-code"
 
-    assert ".env" not in tracked
-    assert not any(path.startswith(("plans/", "reaserch papers/")) for path in tracked)
+
+def test_publish_command_never_makes_the_dataset_public(tmp_path: Path) -> None:
+    create = kaggle_push.dataset_publish_command(False, tmp_path, "abcdef123")
+    version = kaggle_push.dataset_publish_command(True, tmp_path, "abcdef123")
+
+    assert create[:3] == ["kaggle", "datasets", "create"]
+    assert version[:3] == ["kaggle", "datasets", "version"]
+    assert "Commit abcdef1" in version
+    for command in (create, version):
+        assert "-u" not in command
+        assert "--public" not in command
+
+
+def test_code_package_holds_only_code_and_the_commit(tmp_path: Path) -> None:
+    commit = kaggle_push.git("rev-parse", "HEAD").decode().strip()
+    output = tmp_path / "code"
+
+    kaggle_push.build_code_package(commit, output)
+
+    assert (output / kaggle_push.COMMIT_FILE).read_text() == commit
+    assert (output / "src" / "neurofy" / "config.py").is_file()
+    assert (output / "scripts" / "run_experiment.py").is_file()
+    assert json.loads((output / "dataset-metadata.json").read_text())["id"] == (
+        kaggle_push.CODE_DATASET
+    )
+    names = {path.name for path in output.rglob("*")}
+    assert ".env" not in names
+    assert not any((output / folder).exists() for folder in ("plans", "reaserch papers", "tests"))
 
 
 def test_training_kernels_use_gpu_and_keep_earlier_results() -> None:
@@ -83,13 +117,3 @@ def test_training_kernels_use_gpu_and_keep_earlier_results() -> None:
     assert first.gpu and second.gpu
     assert "mlflow" in first.packages
     assert f"{kaggle_push.KAGGLE_USER}/neurofy-train-fp1f7" in second.kernel_sources
-    assert kaggle_push.PREPROCESS_KERNEL in first.kernel_sources
-
-
-def test_every_kernel_command_formats_and_compiles() -> None:
-    for spec in kaggle_push.KERNELS.values():
-        notebook = kaggle_push.build_notebook(_archive({"x": b"y"}), "abc", spec, spec.command)
-
-        assert "{code}" not in _source(notebook)
-        for cell in notebook["cells"]:
-            compile("".join(cell["source"]), "cell", "exec")

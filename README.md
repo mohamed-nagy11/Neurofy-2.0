@@ -47,7 +47,7 @@ Secrets go in a `.env` file, using the names in [.env.example](.env.example).
 
 ## Usage
 
-Experiments run on Kaggle. `scripts/kaggle_push.py` packs the current commit into a private notebook and pushes it, so a kernel needs neither repository access nor secrets. The working tree must be clean.
+Experiments run on Kaggle. `scripts/kaggle_push.py` publishes the current commit as a private code dataset, then pushes a short notebook that runs it, so a kernel needs neither repository access nor secrets. The working tree must be clean.
 
 ```bash
 python scripts/kaggle_push.py verify
@@ -57,8 +57,6 @@ python scripts/kaggle_push.py train-fp1f7 --args "--workers-per-gpu 2"
 python scripts/kaggle_push.py train-fp1f7-t8p8 --args "--workers-per-gpu 2"
 python scripts/kaggle_push.py explain
 ```
-
-Use `--dataset <owner/slug>` to attach a preprocessed Kaggle dataset instead of the preprocessing kernel's output.
 
 The scripts also run directly, with `--data-dir` pointing at preprocessed data:
 

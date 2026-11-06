@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "neurofy"
 version = "0.1.0"
 description = "Single-channel EEG seizure prediction"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "matplotlib>=3.7",

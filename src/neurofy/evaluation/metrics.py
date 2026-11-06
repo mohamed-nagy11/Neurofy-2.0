@@ -13,15 +13,22 @@ from sklearn.metrics import (
 DECISION_THRESHOLD = 0.5
 
 
-def to_predictions(probabilities: np.ndarray) -> np.ndarray:
-    """Convert positive-class probabilities to 0/1 predictions."""
-    return (probabilities >= DECISION_THRESHOLD).astype(int)
+def to_predictions(
+    probabilities: np.ndarray,
+    threshold: float = DECISION_THRESHOLD,
+) -> np.ndarray:
+    """Convert scores to 0/1 predictions."""
+    return (probabilities >= threshold).astype(int)
 
 
-def compute_metrics(labels: np.ndarray, probabilities: np.ndarray) -> dict[str, float]:
+def compute_metrics(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    threshold: float = DECISION_THRESHOLD,
+) -> dict[str, float]:
     """Compute metrics over a full split; `auc_roc` requires both classes to be present."""
     labels = labels.astype(int)
-    predictions = to_predictions(probabilities)
+    predictions = to_predictions(probabilities, threshold)
     tn, fp, _, _ = confusion_matrix(labels, predictions, labels=[0, 1]).ravel()
 
     metrics = {

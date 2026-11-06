@@ -44,7 +44,7 @@ def test_notebook_embeds_archive_commit_and_command() -> None:
 
     assert base64.b64encode(archive).decode() in source
     assert "abc123" in source
-    assert "python /kaggle/working/.neurofy_code/run.py" in source
+    assert f"python {kaggle_push.CODE_DIR}/run.py" in source
 
 
 def test_notebook_bootstrap_compiles() -> None:
@@ -74,3 +74,22 @@ def test_tracked_files_exclude_secrets_and_plans() -> None:
 
     assert ".env" not in tracked
     assert not any(path.startswith(("plans/", "reaserch papers/")) for path in tracked)
+
+
+def test_training_kernels_use_gpu_and_keep_earlier_results() -> None:
+    first = kaggle_push.KERNELS["train-fp1f7"]
+    second = kaggle_push.KERNELS["train-fp1f7-t8p8"]
+
+    assert first.gpu and second.gpu
+    assert "mlflow" in first.packages
+    assert f"{kaggle_push.KAGGLE_USER}/neurofy-train-fp1f7" in second.kernel_sources
+    assert kaggle_push.PREPROCESS_KERNEL in first.kernel_sources
+
+
+def test_every_kernel_command_formats_and_compiles() -> None:
+    for spec in kaggle_push.KERNELS.values():
+        notebook = kaggle_push.build_notebook(_archive({"x": b"y"}), "abc", spec, spec.command)
+
+        assert "{code}" not in _source(notebook)
+        for cell in notebook["cells"]:
+            compile("".join(cell["source"]), "cell", "exec")

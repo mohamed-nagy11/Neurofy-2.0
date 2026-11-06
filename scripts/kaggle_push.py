@@ -7,7 +7,7 @@ import logging
 import os
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from neurofy.utils.logger import configure_logging
@@ -19,11 +19,16 @@ BUILD_ROOT = REPO_ROOT / "build" / "kaggle"
 KAGGLE_USER = "mohamed11nagy11"
 CHBMIT_DATASET = "abhishekinnvonix/seizure-epilepcy-chb-mit-eeg-dataset-pediatric"
 T4_X2 = "NvidiaTeslaT4"
+CODE_DIR = "/tmp/neurofy_code"
+PREPROCESS_KERNEL = f"{KAGGLE_USER}/neurofy-preprocess"
+RESULTS = "--tracking-dir /tmp/mlflow --archive /kaggle/working/mlflow_results.tar.gz"
+EXPERIMENT = f"python {{code}}/scripts/run_experiment.py {RESULTS}"
+SMOKE_PATIENTS = "chb04 chb02 chb16 chb17 chb19 chb22"
 
 _BOOTSTRAP = """\
 import base64, io, os, subprocess, sys, tarfile
 
-CODE_DIR = "/kaggle/working/.neurofy_code"
+CODE_DIR = "{code_dir}"
 ARCHIVE = "{archive}"
 
 with tarfile.open(fileobj=io.BytesIO(base64.b64decode(ARCHIVE)), mode="r:gz") as archive:
@@ -54,7 +59,14 @@ class KernelSpec:
     packages: tuple[str, ...] = ()
     gpu: bool = False
     dataset_sources: tuple[str, ...] = ()
-    kernel_sources: tuple[str, ...] = field(default_factory=tuple)
+    kernel_sources: tuple[str, ...] = ()
+
+
+def _benchmark(workers: int) -> str:
+    return (
+        f"{EXPERIMENT} --config fp1f7 --experiment neurofy-smoke-w{workers} "
+        f"--patients {SMOKE_PATIENTS} --max-epochs 30 --workers-per-gpu {workers}"
+    )
 
 
 KERNELS = {
@@ -63,6 +75,46 @@ KERNELS = {
         title="Neurofy Verify",
         command="python {code}/scripts/verify_dataset.py",
         dataset_sources=(CHBMIT_DATASET,),
+    ),
+    "preprocess": KernelSpec(
+        slug="neurofy-preprocess",
+        title="Neurofy Preprocess",
+        command="python {code}/scripts/preprocess.py --output /kaggle/working/chbmit_preprocessed",
+        packages=("pyedflib",),
+        dataset_sources=(CHBMIT_DATASET,),
+    ),
+    "smoke": KernelSpec(
+        slug="neurofy-smoke",
+        title="Neurofy Smoke",
+        command=" && ".join(
+            [
+                _benchmark(1),
+                _benchmark(2),
+                _benchmark(4),
+                _benchmark(1),
+                f"{EXPERIMENT} --config fp1f7_t8p8 --experiment neurofy-smoke-dual "
+                "--patients chb17 --max-epochs 3",
+            ]
+        ),
+        packages=("mlflow",),
+        gpu=True,
+        kernel_sources=(PREPROCESS_KERNEL,),
+    ),
+    "train-fp1f7": KernelSpec(
+        slug="neurofy-train-fp1f7",
+        title="Neurofy Train Fp1f7",
+        command=f"{EXPERIMENT} --config fp1f7",
+        packages=("mlflow",),
+        gpu=True,
+        kernel_sources=(PREPROCESS_KERNEL,),
+    ),
+    "train-fp1f7-t8p8": KernelSpec(
+        slug="neurofy-train-fp1f7-t8p8",
+        title="Neurofy Train Fp1f7 T8p8",
+        command=f"{EXPERIMENT} --config fp1f7_t8p8",
+        packages=("mlflow",),
+        gpu=True,
+        kernel_sources=(PREPROCESS_KERNEL, f"{KAGGLE_USER}/neurofy-train-fp1f7"),
     ),
 }
 
@@ -86,11 +138,15 @@ def git(*args: str) -> bytes:
 
 def build_notebook(archive: bytes, commit: str, spec: KernelSpec, command: str) -> dict:
     """Create a notebook that unpacks the embedded code and runs one command."""
-    bootstrap = _BOOTSTRAP.format(archive=base64.b64encode(archive).decode(), commit=commit)
+    bootstrap = _BOOTSTRAP.format(
+        archive=base64.b64encode(archive).decode(),
+        commit=commit,
+        code_dir=CODE_DIR,
+    )
     cells = [bootstrap]
     if spec.packages:
         cells.append(f'run("pip install -q {" ".join(spec.packages)}")')
-    cells.append(f'run("{command.format(code="/kaggle/working/.neurofy_code")}")')
+    cells.append(f'run("{command.format(code=CODE_DIR)}")')
     return {
         "cells": [
             {
@@ -133,6 +189,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("kernel", choices=sorted(KERNELS))
     parser.add_argument("--args", default="", help="Extra arguments for the kernel's command")
+    parser.add_argument("--dataset", help="Attach this preprocessed dataset, not kernel output")
     parser.add_argument("--build-only", action="store_true", help="Generate files without pushing")
     args = parser.parse_args()
 
@@ -141,6 +198,12 @@ def main() -> None:
         parser.error("Working tree is dirty; commit first so the run matches a commit")
 
     spec = KERNELS[args.kernel]
+    if args.dataset:
+        spec = replace(
+            spec,
+            dataset_sources=(*spec.dataset_sources, args.dataset),
+            kernel_sources=tuple(s for s in spec.kernel_sources if s != PREPROCESS_KERNEL),
+        )
     commit = git("rev-parse", "HEAD").decode().strip()
     archive = git("archive", "--format=tar.gz", "HEAD")
     command = f"{spec.command} {args.args}".strip()

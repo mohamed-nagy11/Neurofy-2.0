@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Secrets
+.env
+.env.*
+kaggle.json
+
+# Data and model outputs
+/data/
+/checkpoints/
+/logs/
+/results/
+*.pth
+*.pt
+*.log
+
+# MLflow
+mlruns/
+mlartifacts/
+mlflow.db
+
+# Local documentation (READMEs are the only tracked Markdown)
+*.md
+!README.md
+*.pdf
+/docs/
+/plans/
+/reaserch papers/
+
+# Claude
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db

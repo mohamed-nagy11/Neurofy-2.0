@@ -34,7 +34,7 @@ CODE_DIR = "{code_dir}"
 ARCHIVE = "{archive}"
 
 with tarfile.open(fileobj=io.BytesIO(base64.b64decode(ARCHIVE)), mode="r:gz") as archive:
-    archive.extractall(CODE_DIR)
+    archive.extractall(CODE_DIR, filter="data")
 
 env = {{**os.environ, "PYTHONPATH": f"{{CODE_DIR}}/src", "NEUROFY_GIT_COMMIT": "{commit}"}}
 

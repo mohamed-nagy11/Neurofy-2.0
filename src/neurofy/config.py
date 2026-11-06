@@ -4,16 +4,24 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class BaselineConfig:
-    """Baseline experiment."""
+class ExperimentConfig:
+    """Settings for one experiment; defaults follow Jang et al. (2026) where stated."""
 
-    name: str = "baseline"
+    name: str = "fp1f7"
     experiment_name: str = "neurofy"
+    channels: tuple[str, ...] = ("FP1-F7",)
 
-    # Data
-    num_samples: int = 1000
-    input_dim: int = 10
-    num_workers: int = 0
+    # Windows, in samples
+    sampling_rate: int = 256
+    window_samples: int = 2560
+    hop_samples: int = 1280
+    held_out_interictal_samples: int = 460_800
+
+    # Spectrogram
+    stft_frame: int = 64
+    stft_hop: int = 32
+    stft_fft: int = 320
+    stft_bins: int = 63
 
     # Training
     batch_size: int = 16
@@ -23,45 +31,23 @@ class BaselineConfig:
     early_stopping_patience: int = 30
     early_stopping_start_epoch: int = 100
 
+    # Post-processing
+    firing_power_window: int = 119
+    firing_power_threshold: float = 0.5
+
     # Runtime
     seed: int = 42
     device: str = "cuda"
 
 
-@dataclass(frozen=True)
-class Ablation1Config(BaselineConfig):
-    """Lower learning rate."""
-
-    name: str = "ablation1"
-    learning_rate: float = 1e-4
-
-
-@dataclass(frozen=True)
-class Ablation2Config(BaselineConfig):
-    """Larger batch size."""
-
-    name: str = "ablation2"
-    batch_size: int = 64
-
-
-@dataclass(frozen=True)
-class Ablation3Config(BaselineConfig):
-    """No weight decay."""
-
-    name: str = "ablation3"
-    weight_decay: float = 0.0
-
-
-CONFIGS: dict[str, type[BaselineConfig]] = {
-    "baseline": BaselineConfig,
-    "ablation1": Ablation1Config,
-    "ablation2": Ablation2Config,
-    "ablation3": Ablation3Config,
+CONFIGS: dict[str, ExperimentConfig] = {
+    "fp1f7": ExperimentConfig(),
+    "fp1f7_t8p8": ExperimentConfig(name="fp1f7_t8p8", channels=("FP1-F7", "T8-P8")),
 }
 
 
-def get_config(name: str) -> BaselineConfig:
+def get_config(name: str) -> ExperimentConfig:
     """Return the configuration registered under `name`."""
     if name not in CONFIGS:
         raise ValueError(f"Unknown config '{name}'. Available: {sorted(CONFIGS)}")
-    return CONFIGS[name]()
+    return CONFIGS[name]

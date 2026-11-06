@@ -7,13 +7,13 @@ from typing import Any
 import torch
 from torch import nn
 
-from neurofy.config import BaselineConfig
+from neurofy.config import ExperimentConfig
 
 
 def save_checkpoint(
     path: Path,
     model: nn.Module,
-    config: BaselineConfig,
+    config: ExperimentConfig,
     epoch: int,
     score: float,
 ) -> None:

@@ -47,7 +47,7 @@ Secrets go in a `.env` file, using the names in [.env.example](.env.example).
 
 ## Usage
 
-Experiments run on Kaggle. `scripts/kaggle_push.py` publishes the current commit as a private code dataset, then pushes a short notebook that runs it, so a kernel needs neither repository access nor secrets. The working tree must be clean.
+Experiments run on Kaggle. `scripts/kaggle_push.py` pushes a short private notebook that clones this repository at the current commit and runs it, so a kernel needs no secrets. The working tree must be clean, and the commit must be on `origin/main`.
 
 ```bash
 python scripts/kaggle_push.py verify

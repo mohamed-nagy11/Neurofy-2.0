@@ -35,7 +35,7 @@ from neurofy.evaluation.plots import (
 from neurofy.models.mobilenet import create_model
 from neurofy.training.checkpoint import load_checkpoint
 from neurofy.utils.logger import configure_logging
-from neurofy.utils.paths import find_directory_containing
+from neurofy.utils.paths import KAGGLE_INPUT, find_directory_containing
 from neurofy.utils.runtime import get_device, set_seed
 from neurofy.utils.tracking import (
     RESULTS_ARCHIVE,
@@ -201,6 +201,8 @@ def main() -> int:
     parser.add_argument("--archive", type=Path, default=Path(RESULTS_ARCHIVE))
     parser.add_argument("--experiment", help="MLflow experiment name")
     parser.add_argument("--device", help="Override the device, such as cpu")
+    parser.add_argument("--restore-from", help="Attached kernel holding this model's results")
+    parser.add_argument("--input-dir", type=Path, default=KAGGLE_INPUT)
     args = parser.parse_args()
 
     configure_logging()
@@ -212,7 +214,12 @@ def main() -> int:
     data_dir = args.data_dir or find_directory_containing("manifest.json")
 
     if args.tracking_dir:
-        with tracking_session(args.tracking_dir, args.archive):
+        with tracking_session(
+            args.tracking_dir,
+            args.archive,
+            restore_from=args.restore_from,
+            search_root=args.input_dir,
+        ):
             _explain(config, data_dir)
     else:
         _explain(config, data_dir)

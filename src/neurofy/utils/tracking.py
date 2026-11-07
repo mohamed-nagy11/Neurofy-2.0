@@ -139,9 +139,15 @@ def archive_results(tracking_dir: Path, archive_path: Path) -> None:
     logger.info("Archived results to %s (%.1f MB)", archive_path, archive_path.stat().st_size / 1e6)
 
 
-def restore_results(tracking_dir: Path, search_root: Path = KAGGLE_INPUT) -> bool:
-    """Unpack the results of an earlier session attached under `search_root`, if any."""
+def restore_results(
+    tracking_dir: Path,
+    search_root: Path = KAGGLE_INPUT,
+    source: str | None = None,
+) -> bool:
+    """Unpack earlier results found under `search_root`, optionally from one named source."""
     archives = sorted(search_root.rglob(RESULTS_ARCHIVE)) if search_root.exists() else []
+    if source is not None:
+        archives = [path for path in archives if source in path.relative_to(search_root).parts]
     if not archives:
         return False
     with tarfile.open(archives[0], "r:gz") as archive:
@@ -151,7 +157,13 @@ def restore_results(tracking_dir: Path, search_root: Path = KAGGLE_INPUT) -> boo
 
 
 @contextmanager
-def tracking_session(tracking_dir: Path, archive_path: Path) -> Iterator[str]:
+def tracking_session(
+    tracking_dir: Path,
+    archive_path: Path,
+    *,
+    restore_from: str | None = None,
+    search_root: Path = KAGGLE_INPUT,
+) -> Iterator[str]:
     """Serve a local tracking store, archiving it on exit.
 
     A single server process serializes writes from parallel workers, and proxied
@@ -160,7 +172,9 @@ def tracking_session(tracking_dir: Path, archive_path: Path) -> Iterator[str]:
     tracking_dir.mkdir(parents=True, exist_ok=True)
     database = tracking_dir / "mlflow.db"
     if not database.exists():
-        restore_results(tracking_dir)
+        restored = restore_results(tracking_dir, search_root, restore_from)
+        if restore_from is not None and not restored:
+            raise FileNotFoundError(f"No results from {restore_from} under {search_root}")
 
     port = _free_port()
     url = f"http://127.0.0.1:{port}"

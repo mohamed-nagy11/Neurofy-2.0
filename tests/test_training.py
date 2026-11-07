@@ -1,3 +1,4 @@
+import logging
 from dataclasses import replace
 from pathlib import Path
 
@@ -90,6 +91,28 @@ def test_train_fold_logs_full_experiment(config: ExperimentConfig, tmp_path: Pat
         client, parent_run.info.run_id
     )
     assert find_experiment_run_id(config.experiment_name, config.name) == parent_run.info.run_id
+
+
+@pytest.mark.usefixtures("tracking_store")
+def test_train_fold_logs_one_line_per_epoch(
+    config: ExperimentConfig,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    write_synthetic_dataset(tmp_path / "data")
+    two_epochs = replace(config, max_epochs=2, early_stopping_start_epoch=10)
+    record = load_records(tmp_path / "data")["chb01"]
+    signal = load_signal(record, two_epochs.channels, torch.device("cpu"))
+
+    with caplog.at_level(logging.INFO, logger="neurofy.training.trainer"):
+        train_fold(two_epochs, build_folds(record, two_epochs)[0], signal)
+
+    lines = [record.getMessage() for record in caplog.records if "| Epoch" in record.getMessage()]
+    assert len(lines) == 2
+    assert lines[0].startswith("chb01/seizure-0 | Epoch 1/2 | train_loss=")
+    assert "train_acc=" in lines[0]
+    assert "val_loss=" in lines[0]
+    assert "val_acc=" in lines[0]
 
 
 @pytest.mark.usefixtures("tracking_store")

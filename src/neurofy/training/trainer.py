@@ -198,8 +198,9 @@ def train_fold(
             for name, value in epoch_metrics.items():
                 history[name].append(value)
 
-            logger.debug(
-                "Epoch %d/%d | train_loss=%.4f train_acc=%.4f | val_loss=%.4f val_acc=%.4f",
+            logger.info(
+                "%s | Epoch %d/%d | train_loss=%.4f train_acc=%.4f | val_loss=%.4f val_acc=%.4f",
+                fold.key,
                 epoch,
                 config.max_epochs,
                 train_metrics["loss"],
@@ -211,7 +212,7 @@ def train_fold(
             if stopper.update(val_metrics["accuracy"], epoch):
                 save_checkpoint(checkpoint_path, model, config, epoch, stopper.best_score)
             if stopper.should_stop:
-                logger.debug("Early stopping at epoch %d", epoch)
+                logger.info("%s | Early stopping at epoch %d", fold.key, epoch)
                 break
 
         mlflow.log_metrics(

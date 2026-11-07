@@ -108,28 +108,40 @@ def _masked(
     return torch.where(mask, fill, spectrograms)
 
 
+def _shifted_maps(maps: torch.Tensor, generator: torch.Generator) -> torch.Tensor:
+    """Move each map to a random position, keeping the shape of its highlighted regions."""
+    frames, bins = maps.shape[1:]
+    shifted = []
+    for single in maps:
+        offsets = (
+            int(torch.randint(frames, (1,), generator=generator, device=generator.device)),
+            int(torch.randint(bins, (1,), generator=generator, device=generator.device)),
+        )
+        shifted.append(torch.roll(single, offsets, dims=(0, 1)))
+    return torch.stack(shifted)
+
+
 def deletion_test(
     model: SeizureNet,
     spectrograms: torch.Tensor,
     maps: torch.Tensor,
     generator: torch.Generator,
 ) -> list[dict[str, float]]:
-    """Compare the logit drop from masking CAM regions with masking random regions."""
+    """Compare the logit drop from masking CAM regions with masking those regions moved elsewhere.
+
+    Moved regions keep the same size and shape, so the baseline differs only in location.
+    """
     baseline = _in_batches(model, spectrograms, _logits)
-    random_scores = torch.rand(
-        maps.shape,
-        generator=generator,
-        device=generator.device,
-    ).to(maps.device)
+    moved = _shifted_maps(maps, generator)
     rows = []
     for fraction in DELETION_FRACTIONS:
         cam_logits = _in_batches(model, _masked(spectrograms, maps, fraction), _logits)
-        random_logits = _in_batches(model, _masked(spectrograms, random_scores, fraction), _logits)
+        moved_logits = _in_batches(model, _masked(spectrograms, moved, fraction), _logits)
         rows.append(
             {
                 "fraction": fraction,
                 "cam_logit_drop": float((baseline - cam_logits).mean()),
-                "random_logit_drop": float((baseline - random_logits).mean()),
+                "random_logit_drop": float((baseline - moved_logits).mean()),
             }
         )
     return rows

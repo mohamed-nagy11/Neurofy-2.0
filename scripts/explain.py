@@ -186,7 +186,7 @@ def _explain(config: ExperimentConfig, data_dir: Path) -> None:
             }
         )
         logger.info(
-            "Logit drop %.3f for CAM vs %.3f for random; similarity to random model %.3f",
+            "Logit drop %.3f for CAM vs %.3f for moved regions; similarity to random model %.3f",
             cam_drop,
             random_drop,
             similarity,

@@ -195,7 +195,10 @@ def plot_deletion_test(rows: list[dict]) -> Figure:
     figure = Figure(figsize=(6, 4), layout="constrained")
     ax = figure.subplots()
 
-    for key, label in (("cam_logit_drop", "Grad-CAM regions"), ("random_logit_drop", "random")):
+    for key, label in (
+        ("cam_logit_drop", "Grad-CAM regions"),
+        ("random_logit_drop", "same regions moved"),
+    ):
         values = [np.mean([row[key] for row in rows if row["fraction"] == f]) for f in fractions]
         ax.plot(fractions, values, marker="o", label=label)
     ax.set(xlabel="Fraction of cells masked", ylabel="Mean logit drop")

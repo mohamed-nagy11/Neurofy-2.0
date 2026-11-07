@@ -9,6 +9,7 @@ from neurofy.config import CONFIGS
 from neurofy.data.folds import Fold
 from neurofy.evaluation.explainability import (
     BANDS,
+    _shifted_maps,
     band_importance,
     band_importance_by_time,
     bin_frequencies,
@@ -135,6 +136,17 @@ def test_deletion_test_reports_every_fraction() -> None:
 
     assert [row["fraction"] for row in rows] == [0.1, 0.2, 0.3]
     assert all(np.isfinite(row["cam_logit_drop"]) for row in rows)
+
+
+def test_shifted_maps_keep_each_map_values() -> None:
+    maps = torch.rand(3, 80, 63)
+
+    moved = _shifted_maps(maps, torch.Generator().manual_seed(0))
+
+    assert moved.shape == maps.shape
+    assert not torch.equal(moved, maps)
+    for original, shifted in zip(maps, moved, strict=True):
+        assert torch.equal(original.flatten().sort().values, shifted.flatten().sort().values)
 
 
 def test_map_similarity_detects_identical_and_opposite_maps() -> None:

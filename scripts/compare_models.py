@@ -35,7 +35,7 @@ def _compare(experiment: str) -> None:
         mlflow.log_text(rows_to_csv(paired), "model_comparison.csv")
 
         for row in paper:
-            logger.info("Paper | %s: %.4f ± %.4f", row["metric"], row["mean"], row["std"])
+            logger.info("Paper | %s: %.4f +/- %.4f", row["metric"], row["mean"], row["std"])
         for row in paired:
             logger.info(
                 "Models | %s: %.4f vs %.4f, difference %.4f, p=%.3f, %d patients changed",

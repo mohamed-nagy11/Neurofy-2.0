@@ -37,7 +37,7 @@ def _run(config, data_dir: Path, args: argparse.Namespace) -> int:
     for metric in ("segment/accuracy", "segment/fpr", "event/sensitivity"):
         if metric in cohort:
             logger.info(
-                "%s: %.4f ± %.4f",
+                "%s: %.4f +/- %.4f",
                 metric,
                 cohort[metric]["mean"],
                 cohort[metric]["std"],

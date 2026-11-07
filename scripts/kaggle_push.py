@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -271,7 +272,11 @@ def main() -> None:
     if not is_pushed(commit):
         parser.error(f"Commit {commit[:7]} is not on origin/main; push it first")
 
-    command = ["kaggle", "kernels", "push", "-p", str(kernel_dir)]
+    # Resolve through PATH; on Windows a bare name can pick a different installed version.
+    kaggle = shutil.which("kaggle")
+    if kaggle is None:
+        parser.error('Kaggle CLI not found; install it with: uv pip install -e ".[kaggle]"')
+    command = [kaggle, "kernels", "push", "-p", str(kernel_dir)]
     if args.no_run:
         command.append("--no-run")
     env = {**os.environ, **load_env(REPO_ROOT / ".env")}

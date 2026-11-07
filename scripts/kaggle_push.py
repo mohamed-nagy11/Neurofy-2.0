@@ -27,6 +27,8 @@ EXPERIMENT = f"python {CODE_DIR}/scripts/run_experiment.py {RESULTS}"
 COMPARE = f"python {CODE_DIR}/scripts/compare_models.py {RESULTS}"
 EXPLAIN = f"python {CODE_DIR}/scripts/explain.py {RESULTS}"
 SMOKE_PATIENTS = "chb04 chb02 chb16 chb17 chb19 chb22"
+MODEL_1_KERNEL = "neurofy-train-fp1f7"
+MODEL_2_KERNEL = "neurofy-train-fp1f7-t8p8"
 
 
 @dataclass(frozen=True)
@@ -103,36 +105,51 @@ KERNELS = {
         dataset_sources=(PREPROCESSED_DATASET,),
     ),
     "train-fp1f7": KernelSpec(
-        slug="neurofy-train-fp1f7",
+        slug=MODEL_1_KERNEL,
         title="Neurofy Train Fp1f7",
         description="Train Model 1 (Fp1-F7) across all leave-one-seizure-out folds.",
-        steps=(Step("Train Model 1", f"{EXPERIMENT} --config fp1f7"),),
+        steps=(Step("Train Model 1", f"{EXPERIMENT} --config fp1f7 --workers-per-gpu 2"),),
         gpu=True,
         dataset_sources=(PREPROCESSED_DATASET,),
     ),
     "train-fp1f7-t8p8": KernelSpec(
-        slug="neurofy-train-fp1f7-t8p8",
+        slug=MODEL_2_KERNEL,
         title="Neurofy Train Fp1f7 T8p8",
-        description="Train Model 2 (Fp1-F7 and T8-P8) on top of Model 1's results, then compare.",
-        steps=(
-            Step("Train Model 2", f"{EXPERIMENT} --config fp1f7_t8p8"),
-            Step("Compare the models", COMPARE),
-        ),
+        description="Train Model 2 (Fp1-F7 and T8-P8) across all leave-one-seizure-out folds.",
+        steps=(Step("Train Model 2", f"{EXPERIMENT} --config fp1f7_t8p8 --workers-per-gpu 2"),),
         gpu=True,
         dataset_sources=(PREPROCESSED_DATASET,),
-        kernel_sources=(f"{KAGGLE_USER}/neurofy-train-fp1f7",),
     ),
-    "explain": KernelSpec(
-        slug="neurofy-explain",
-        title="Neurofy Explain",
-        description="Explain both models with Grad-CAM, reliability checks and channel ablation.",
+    "analysis": KernelSpec(
+        slug="neurofy-analysis",
+        title="Neurofy Analysis",
+        description="Compare both models with the paper and each other, then explain them.",
         steps=(
-            Step("Explain Model 1", f"{EXPLAIN} --config fp1f7"),
-            Step("Explain Model 2", f"{EXPLAIN} --config fp1f7_t8p8"),
+            Step(
+                "Compare the models",
+                f"python {CODE_DIR}/scripts/compare_models.py "
+                "--tracking-dir /tmp/mlflow-comparison "
+                "--archive /kaggle/working/mlflow_comparison.tar.gz "
+                f"--first-results {MODEL_1_KERNEL} --second-results {MODEL_2_KERNEL}",
+            ),
+            Step(
+                "Explain Model 1",
+                f"python {CODE_DIR}/scripts/explain.py --config fp1f7 "
+                "--tracking-dir /tmp/mlflow-fp1f7 "
+                "--archive /kaggle/working/mlflow_fp1f7.tar.gz "
+                f"--restore-from {MODEL_1_KERNEL}",
+            ),
+            Step(
+                "Explain Model 2",
+                f"python {CODE_DIR}/scripts/explain.py --config fp1f7_t8p8 "
+                "--tracking-dir /tmp/mlflow-fp1f7-t8p8 "
+                "--archive /kaggle/working/mlflow_fp1f7_t8p8.tar.gz "
+                f"--restore-from {MODEL_2_KERNEL}",
+            ),
         ),
         gpu=True,
         dataset_sources=(PREPROCESSED_DATASET,),
-        kernel_sources=(f"{KAGGLE_USER}/neurofy-train-fp1f7-t8p8",),
+        kernel_sources=(f"{KAGGLE_USER}/{MODEL_1_KERNEL}", f"{KAGGLE_USER}/{MODEL_2_KERNEL}"),
     ),
 }
 

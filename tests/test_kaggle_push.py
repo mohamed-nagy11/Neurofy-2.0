@@ -46,16 +46,16 @@ def test_notebook_clones_the_exact_commit_and_installs_it() -> None:
 
 
 def test_each_step_has_a_title_and_extra_args_go_to_the_first() -> None:
-    spec = kaggle_push.KERNELS["train-fp1f7-t8p8"]
+    spec = kaggle_push.KERNELS["analysis"]
 
-    sources = _sources(kaggle_push.build_notebook(spec, COMMIT, "--workers-per-gpu 2"))
-    train = next(cell for cell in sources if "run_experiment" in cell)
+    sources = _sources(kaggle_push.build_notebook(spec, COMMIT, "--example 1"))
     compare = next(cell for cell in sources if "compare_models" in cell)
+    explain = next(cell for cell in sources if "explain.py" in cell)
 
-    assert "## Train Model 2\n" in sources
-    assert "## Compare the models\n" in sources
-    assert "--workers-per-gpu 2" in train
-    assert "--workers-per-gpu" not in compare
+    assert any(cell.startswith("## Compare the models") for cell in sources)
+    assert any(cell.startswith("## Explain Model 1") for cell in sources)
+    assert "--example 1" in compare
+    assert "--example 1" not in explain
 
 
 def test_note_appears_in_the_header() -> None:
@@ -94,9 +94,23 @@ def test_tracked_files_exclude_secrets_and_plans() -> None:
     assert not any(path.startswith(("plans/", "reaserch papers/")) for path in tracked)
 
 
-def test_training_kernels_use_gpu_and_keep_earlier_results() -> None:
+def test_training_kernels_run_independently_with_two_workers_per_gpu() -> None:
     first = kaggle_push.KERNELS["train-fp1f7"]
     second = kaggle_push.KERNELS["train-fp1f7-t8p8"]
 
-    assert first.gpu and second.gpu
-    assert f"{kaggle_push.KAGGLE_USER}/neurofy-train-fp1f7" in second.kernel_sources
+    for spec in (first, second):
+        assert spec.gpu
+        assert not spec.kernel_sources
+        assert "--workers-per-gpu 2" in spec.steps[0].command
+
+
+def test_analysis_attaches_both_training_kernels() -> None:
+    spec = kaggle_push.KERNELS["analysis"]
+    commands = " ".join(step.command for step in spec.steps)
+
+    assert f"{kaggle_push.KAGGLE_USER}/{kaggle_push.MODEL_1_KERNEL}" in spec.kernel_sources
+    assert f"{kaggle_push.KAGGLE_USER}/{kaggle_push.MODEL_2_KERNEL}" in spec.kernel_sources
+    assert f"--first-results {kaggle_push.MODEL_1_KERNEL}" in commands
+    assert f"--second-results {kaggle_push.MODEL_2_KERNEL}" in commands
+    assert f"--restore-from {kaggle_push.MODEL_1_KERNEL}" in commands
+    assert f"--restore-from {kaggle_push.MODEL_2_KERNEL}" in commands

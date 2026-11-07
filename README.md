@@ -53,10 +53,12 @@ Experiments run on Kaggle. `scripts/kaggle_push.py` pushes a short private noteb
 python scripts/kaggle_push.py verify
 python scripts/kaggle_push.py preprocess
 python scripts/kaggle_push.py smoke
-python scripts/kaggle_push.py train-fp1f7 --args "--workers-per-gpu 2"
-python scripts/kaggle_push.py train-fp1f7-t8p8 --args "--workers-per-gpu 2"
-python scripts/kaggle_push.py explain
+python scripts/kaggle_push.py train-fp1f7
+python scripts/kaggle_push.py train-fp1f7-t8p8
+python scripts/kaggle_push.py analysis
 ```
+
+The two training kernels can run at the same time, each with its own results archive. The analysis kernel reads both, compares the models and runs the explanations.
 
 The scripts also run directly, with `--data-dir` pointing at preprocessed data:
 

@@ -7,6 +7,22 @@ Single-channel EEG seizure prediction. The project reproduces the patient-specif
 | Model 1 | `fp1f7` | Fp1-F7 |
 | Model 2 | `fp1f7_t8p8` | Fp1-F7 and T8-P8 |
 
+## Results
+
+Patient-specific, leave-one-seizure-out results on CHB-MIT: 17 patients, 55 seizures. Values are means ± standard deviation across patients, computed after firing power.
+
+| Metric | Model 1 | Model 2 | Paper (Fp1) |
+|---|---:|---:|---:|
+| Accuracy | 0.758 ± 0.133 | 0.736 ± 0.160 | 0.907 |
+| False positive rate | 0.122 ± 0.229 | 0.112 ± 0.207 | 0.092 |
+| Event-based sensitivity | 0.763 ± 0.328 | 0.694 ± 0.387 | 0.979 |
+| AUC-ROC | 0.891 ± 0.106 | 0.863 ± 0.161 | Not reported |
+| Interictal alarm rate | 0.260 ± 0.325 | 0.242 ± 0.303 | Not reported |
+
+Model 1 did not reach the paper's reported values. The differences between Model 1 and Model 2 are not statistically significant (paired Wilcoxon tests across patients, all p > 0.28).
+
+The setup differs from the paper in its cohort (the paper's 16 patients and 54 seizures can't be reproduced from its stated rules), its sampling rate (native 256 Hz instead of 200 Hz) and details the paper doesn't specify, including spectrogram scaling and filter causality. Like the paper, it selects each fold's best epoch on held-out data, so results are likely optimistic for real-world use.
+
 ## Pipeline
 
 1. **Verify:** check a dataset copy against the checksums published by PhysioNet.

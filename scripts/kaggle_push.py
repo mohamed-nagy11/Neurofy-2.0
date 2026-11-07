@@ -26,7 +26,13 @@ RESULTS = "--tracking-dir /tmp/mlflow --archive /kaggle/working/mlflow_results.t
 EXPERIMENT = f"python {CODE_DIR}/scripts/run_experiment.py {RESULTS}"
 COMPARE = f"python {CODE_DIR}/scripts/compare_models.py {RESULTS}"
 EXPLAIN = f"python {CODE_DIR}/scripts/explain.py {RESULTS}"
-RUN_HELPER = '''import shlex
+SMOKE_PATIENTS = "chb04 chb02 chb16 chb17 chb19 chb22"
+MODEL_1_KERNEL = "neurofy-train-fp1f7"
+MODEL_2_KERNEL = "neurofy-train-fp1f7-t8p8"
+
+# Kaggle holds %%bash output until the cell ends, and ! corrupts multi-line commands.
+RUN_HELPER = '''\
+import shlex
 import subprocess
 import sys
 
@@ -45,9 +51,6 @@ def run(command):
     if process.wait() != 0:
         raise RuntimeError(f"Command failed: {command}")
 '''
-SMOKE_PATIENTS = "chb04 chb02 chb16 chb17 chb19 chb22"
-MODEL_1_KERNEL = "neurofy-train-fp1f7"
-MODEL_2_KERNEL = "neurofy-train-fp1f7-t8p8"
 
 
 @dataclass(frozen=True)
@@ -203,12 +206,8 @@ def is_pushed(commit: str) -> bool:
 
 def _run_call(command: str) -> str:
     """Write a `run` call with each option of the command on its own line."""
-    readable = command.replace(" --", "
-  --")
-    return f'run("""
-{readable}
-""")
-'
+    readable = command.replace(" --", "\n  --")
+    return f'run("""\n{readable}\n""")\n'
 
 
 def _markdown_cell(text: str) -> dict:
@@ -237,24 +236,18 @@ def build_notebook(spec: KernelSpec, commit: str, extra_args: str = "", note: st
 
     cells = [
         _markdown_cell(header),
-        _markdown_cell("## Setup
-"),
+        _markdown_cell("## Setup\n"),
         _code_cell(RUN_HELPER),
         _code_cell(
-            f'run("git clone --quiet {REPO_URL}.git {CODE_DIR}")
-'
-            f'run("git -C {CODE_DIR} checkout --quiet {commit}")
-'
-            f'run("pip install --quiet {CODE_DIR}")
-'
+            f'run("git clone --quiet {REPO_URL}.git {CODE_DIR}")\n'
+            f'run("git -C {CODE_DIR} checkout --quiet {commit}")\n'
+            f'run("pip install --quiet {CODE_DIR}")\n'
         ),
-        _code_cell(f"%env NEUROFY_GIT_COMMIT={commit}
-"),
+        _code_cell(f"%env NEUROFY_GIT_COMMIT={commit}\n"),
     ]
     for index, step in enumerate(spec.steps):
         command = f"{step.command} {extra_args}".strip() if index == 0 else step.command
-        cells.append(_markdown_cell(f"## {step.title}
-"))
+        cells.append(_markdown_cell(f"## {step.title}\n"))
         cells.append(_code_cell(_run_call(command)))
     return {
         "cells": cells,
@@ -318,7 +311,6 @@ def main() -> None:
     if not is_pushed(commit):
         parser.error(f"Commit {commit[:7]} is not on origin/main; push it first")
 
-    # Resolve through PATH; on Windows a bare name can pick a different installed version.
     kaggle = shutil.which("kaggle")
     if kaggle is None:
         parser.error('Kaggle CLI not found; install it with: uv pip install -e ".[kaggle]"')

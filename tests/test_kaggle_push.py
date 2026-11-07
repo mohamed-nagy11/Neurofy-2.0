@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import shlex
 import sys
 from pathlib import Path
@@ -70,45 +71,42 @@ def test_note_appears_in_the_header() -> None:
 
 def test_notebooks_avoid_cell_types_that_hide_live_logs() -> None:
     for spec in kaggle_push.KERNELS.values():
-        source = "".join(_sources(kaggle_push.build_notebook(spec, COMMIT)))
-
-        assert "%%bash" not in source
-        assert "
-!" not in source
+        for source in _sources(kaggle_push.build_notebook(spec, COMMIT)):
+            assert not source.startswith("%%bash")
+            assert not source.startswith("!")
 
 
 def test_code_cells_compile() -> None:
     for spec in kaggle_push.KERNELS.values():
-        for cell in kaggle_push.build_notebook(spec, COMMIT)["cells"]:
+        notebook = kaggle_push.build_notebook(spec, COMMIT)
+        for cell in notebook["cells"]:
             source = "".join(cell["source"])
             if cell["cell_type"] == "code" and not source.startswith("%"):
                 compile(source, "cell", "exec")
+        json.dumps(notebook)
 
 
 def test_multiline_commands_parse_to_the_original_arguments() -> None:
     spec = kaggle_push.KERNELS["train-fp1f7"]
-    namespace: dict = {}
-
-    def capture(command: str) -> None:
-        namespace["command"] = command
+    commands = []
 
     cell = _sources(kaggle_push.build_notebook(spec, COMMIT))[-1]
-    exec(cell, {"run": capture})
+    exec(cell, {"run": commands.append})
 
-    assert shlex.split(namespace["command"]) == shlex.split(spec.steps[0].command)
-    assert "
-  --config fp1f7" in namespace["command"]
+    assert shlex.split(commands[0]) == shlex.split(spec.steps[0].command)
+    assert "\n  --config fp1f7" in commands[0]
 
 
 def test_run_helper_streams_output_and_raises_on_failure(capsys) -> None:
     namespace: dict = {}
     exec(kaggle_push.RUN_HELPER, namespace)
+    python = Path(sys.executable).as_posix()
 
-    namespace["run"](f'"{sys.executable}" -c "print(123)"')
+    namespace["run"](f'"{python}" -c "print(123)"')
     assert "123" in capsys.readouterr().out
 
     with pytest.raises(RuntimeError, match="Command failed"):
-        namespace["run"](f'"{sys.executable}" -c "import sys; sys.exit(3)"')
+        namespace["run"](f'"{python}" -c "import sys; sys.exit(3)"')
 
 
 def test_metadata_is_private_and_selects_t4_for_gpu_kernels() -> None:

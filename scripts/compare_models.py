@@ -90,7 +90,12 @@ def main() -> int:
         second = _read_rows_from_results(
             args.experiment, SECOND, args.second_results, args.input_dir
         )
-        with tracking_session(args.tracking_dir, args.archive):
+        with tracking_session(
+            args.tracking_dir,
+            args.archive,
+            restore=False,
+            search_root=args.input_dir,
+        ):
             _report(args.experiment, first, second)
     elif args.tracking_dir:
         with tracking_session(args.tracking_dir, args.archive):

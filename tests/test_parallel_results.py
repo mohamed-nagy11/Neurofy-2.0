@@ -105,6 +105,7 @@ def test_comparison_reads_two_separate_stores(config: ExperimentConfig, tmp_path
     assert result.returncode == 0, result.stderr[-2000:]
     with tarfile.open(output) as archive:
         names = archive.getnames()
+    assert not any(name.endswith("best_model.pt") for name in names)
     for artifact in (
         "paper_comparison.csv",
         "model_comparison.csv",

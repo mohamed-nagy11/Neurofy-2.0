@@ -161,6 +161,7 @@ def tracking_session(
     tracking_dir: Path,
     archive_path: Path,
     *,
+    restore: bool = True,
     restore_from: str | None = None,
     search_root: Path = KAGGLE_INPUT,
 ) -> Iterator[str]:
@@ -171,7 +172,7 @@ def tracking_session(
     """
     tracking_dir.mkdir(parents=True, exist_ok=True)
     database = tracking_dir / "mlflow.db"
-    if not database.exists():
+    if restore and not database.exists():
         restored = restore_results(tracking_dir, search_root, restore_from)
         if restore_from is not None and not restored:
             raise FileNotFoundError(f"No results from {restore_from} under {search_root}")

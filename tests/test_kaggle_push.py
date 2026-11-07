@@ -1,7 +1,9 @@
 import importlib.util
-import json
+import shlex
 import sys
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("kaggle_push", REPO_ROOT / "scripts/kaggle_push.py")
@@ -38,9 +40,9 @@ def test_notebook_clones_the_exact_commit_and_installs_it() -> None:
     notebook = kaggle_push.build_notebook(kaggle_push.KERNELS["verify"], COMMIT)
     source = "".join(_sources(notebook))
 
-    assert f"git clone --quiet {kaggle_push.REPO_URL}.git" in source
+    assert f'run("git clone --quiet {kaggle_push.REPO_URL}.git' in source
     assert f"checkout --quiet {COMMIT}" in source
-    assert f"pip install --quiet {kaggle_push.CODE_DIR}" in source
+    assert f'run("pip install --quiet {kaggle_push.CODE_DIR}")' in source
     assert f"%env NEUROFY_GIT_COMMIT={COMMIT}" in source
     assert f"tree/{COMMIT}" in source
 
@@ -66,13 +68,47 @@ def test_note_appears_in_the_header() -> None:
     assert "**Result:** passed." in _sources(notebook)[0]
 
 
-def test_command_cells_stop_on_failure() -> None:
-    notebook = kaggle_push.build_notebook(kaggle_push.KERNELS["smoke"], COMMIT)
-    commands = [source for source in _sources(notebook) if source.startswith("%%bash")]
+def test_notebooks_avoid_cell_types_that_hide_live_logs() -> None:
+    for spec in kaggle_push.KERNELS.values():
+        source = "".join(_sources(kaggle_push.build_notebook(spec, COMMIT)))
 
-    assert len(commands) == 8
-    assert all(source.startswith("%%bash\nset -e\n") for source in commands)
-    json.dumps(notebook)
+        assert "%%bash" not in source
+        assert "
+!" not in source
+
+
+def test_code_cells_compile() -> None:
+    for spec in kaggle_push.KERNELS.values():
+        for cell in kaggle_push.build_notebook(spec, COMMIT)["cells"]:
+            source = "".join(cell["source"])
+            if cell["cell_type"] == "code" and not source.startswith("%"):
+                compile(source, "cell", "exec")
+
+
+def test_multiline_commands_parse_to_the_original_arguments() -> None:
+    spec = kaggle_push.KERNELS["train-fp1f7"]
+    namespace: dict = {}
+
+    def capture(command: str) -> None:
+        namespace["command"] = command
+
+    cell = _sources(kaggle_push.build_notebook(spec, COMMIT))[-1]
+    exec(cell, {"run": capture})
+
+    assert shlex.split(namespace["command"]) == shlex.split(spec.steps[0].command)
+    assert "
+  --config fp1f7" in namespace["command"]
+
+
+def test_run_helper_streams_output_and_raises_on_failure(capsys) -> None:
+    namespace: dict = {}
+    exec(kaggle_push.RUN_HELPER, namespace)
+
+    namespace["run"](f'"{sys.executable}" -c "print(123)"')
+    assert "123" in capsys.readouterr().out
+
+    with pytest.raises(RuntimeError, match="Command failed"):
+        namespace["run"](f'"{sys.executable}" -c "import sys; sys.exit(3)"')
 
 
 def test_metadata_is_private_and_selects_t4_for_gpu_kernels() -> None:

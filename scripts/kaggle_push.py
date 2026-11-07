@@ -26,6 +26,25 @@ RESULTS = "--tracking-dir /tmp/mlflow --archive /kaggle/working/mlflow_results.t
 EXPERIMENT = f"python {CODE_DIR}/scripts/run_experiment.py {RESULTS}"
 COMPARE = f"python {CODE_DIR}/scripts/compare_models.py {RESULTS}"
 EXPLAIN = f"python {CODE_DIR}/scripts/explain.py {RESULTS}"
+RUN_HELPER = '''import shlex
+import subprocess
+import sys
+
+
+def run(command):
+    """Run a command, stream its output live, and fail the notebook if it fails."""
+    process = subprocess.Popen(
+        shlex.split(command),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    for line in process.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+    if process.wait() != 0:
+        raise RuntimeError(f"Command failed: {command}")
+'''
 SMOKE_PATIENTS = "chb04 chb02 chb16 chb17 chb19 chb22"
 MODEL_1_KERNEL = "neurofy-train-fp1f7"
 MODEL_2_KERNEL = "neurofy-train-fp1f7-t8p8"
@@ -182,9 +201,14 @@ def is_pushed(commit: str) -> bool:
     return result.returncode == 0
 
 
-def _readable_command(command: str) -> str:
-    """Put each option of a shell command on its own line."""
-    return command.replace(" --", " \\\n  --")
+def _run_call(command: str) -> str:
+    """Write a `run` call with each option of the command on its own line."""
+    readable = command.replace(" --", "
+  --")
+    return f'run("""
+{readable}
+""")
+'
 
 
 def _markdown_cell(text: str) -> dict:
@@ -213,20 +237,25 @@ def build_notebook(spec: KernelSpec, commit: str, extra_args: str = "", note: st
 
     cells = [
         _markdown_cell(header),
-        _markdown_cell("## Setup\n"),
+        _markdown_cell("## Setup
+"),
+        _code_cell(RUN_HELPER),
         _code_cell(
-            "%%bash\n"
-            "set -e\n"
-            f"git clone --quiet {REPO_URL}.git {CODE_DIR}\n"
-            f"git -C {CODE_DIR} checkout --quiet {commit}\n"
-            f"pip install --quiet {CODE_DIR}\n"
+            f'run("git clone --quiet {REPO_URL}.git {CODE_DIR}")
+'
+            f'run("git -C {CODE_DIR} checkout --quiet {commit}")
+'
+            f'run("pip install --quiet {CODE_DIR}")
+'
         ),
-        _code_cell(f"%env NEUROFY_GIT_COMMIT={commit}\n"),
+        _code_cell(f"%env NEUROFY_GIT_COMMIT={commit}
+"),
     ]
     for index, step in enumerate(spec.steps):
         command = f"{step.command} {extra_args}".strip() if index == 0 else step.command
-        cells.append(_markdown_cell(f"## {step.title}\n"))
-        cells.append(_code_cell(f"%%bash\nset -e\n{_readable_command(command)}\n"))
+        cells.append(_markdown_cell(f"## {step.title}
+"))
+        cells.append(_code_cell(_run_call(command)))
     return {
         "cells": cells,
         "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3"}},
